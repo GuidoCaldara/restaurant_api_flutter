@@ -5,8 +5,10 @@ import 'mixin/mixin_validator.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'restaurant_card.dart';
+import 'package:flutter/services.dart';
 import '../models/restaurant.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'secret.dart';
+import 'package:location/location.dart';
 
 class UserForm extends StatefulWidget {
   @override
@@ -52,11 +54,14 @@ class UserFormState extends State<UserForm> with MixinValidator {
     changestate(latitude, longitude);
   }
 
-  Future getRestaurantData(lat, lng) async {
+  Future getRestaurantData(lat, lng, [bool byDistance = false]) async {
+    Secret secret =
+        await SecretLoader(secretPath: "assets/secrets.json").load();
+    String queryType = byDistance ? 'real_distance' : 'rating';
     String url =
-        'https://developers.zomato.com/api/v2.1/search?lat=$lat&lon=$lng&sort=rating&order=desc';
-    var response = await http
-        .get(url, headers: {'user-key': '55b999fc85f2826feadca8e1d2a52a83'});
+        'https://developers.zomato.com/api/v2.1/search?lat=$lat&lon=$lng&sort=$queryType&order=desc';
+    var response =
+        await http.get(url, headers: {'user-key': secret.zoomato_api});
     var restaurants = json.decode(response.body)['restaurants'];
     List<RestaurantModel> restoList = [];
     restaurants.forEach((resto) {
@@ -66,8 +71,8 @@ class UserFormState extends State<UserForm> with MixinValidator {
     return restoList;
   }
 
-  changestate(lat, lng) async {
-    var restaurantList = await getRestaurantData(lat, lng);
+  changestate(lat, lng, [bool byDistance = false]) async {
+    var restaurantList = await getRestaurantData(lat, lng, byDistance);
     setState(() {
       restaurants.addAll(restaurantList);
     });
@@ -92,12 +97,39 @@ class UserFormState extends State<UserForm> with MixinValidator {
   }
 
   formButton() {
-    return RaisedButton(
-        onPressed: () {
-          if (formKey.currentState.validate()) {
-            formKey.currentState.save();
-          }
-        },
-        child: Text('Search City', style: TextStyle(fontSize: 20)));
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: <Widget>[
+        RaisedButton(
+          onPressed: () {
+            if (formKey.currentState.validate()) {
+              formKey.currentState.save();
+            }
+          },
+          child: Text(
+            'Search City',
+            style: TextStyle(fontSize: 20),
+          ),
+        ),
+        RaisedButton(
+          onPressed: () async {
+            var location = Location();
+            try {
+              var userLocation = await location.getLocation();
+              setState(() {
+                restaurants.clear();
+              });
+              changestate(userLocation.latitude, userLocation.longitude, true);
+            } on Exception catch (e) {
+              print('Could not get location: ${e.toString()}');
+            }
+          },
+          child: Text(
+            'Nearby',
+            style: TextStyle(fontSize: 20),
+          ),
+        )
+      ],
+    );
   }
 }
